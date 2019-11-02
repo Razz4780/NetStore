@@ -90,6 +90,9 @@ func getFileChunk(readwriter *bufio.ReadWriter, filename string, offset, chunkSi
 	if _, err := readwriter.WriteString(filename); err != nil {
 		return err
 	}
+	if err := readwriter.Flush(); err != nil {
+		return err
+	}
 	response := make([]byte, 6)
 	if _, err := io.ReadFull(readwriter, response); err != nil {
 		return err
