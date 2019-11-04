@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"os"
 )
 
 const (
@@ -113,12 +114,12 @@ func ReadFilenamesResponse(reader io.Reader) (FilenamesResponse, error) {
 	return FilenamesResponse{filenames}, nil
 }
 
-func WriteFilenamesResponse(writer io.Writer, filenames [][]byte) error {
+func WriteFilenamesResponse(writer io.Writer, files []os.FileInfo) error {
 	buff := make([]byte, 6)
 	binary.BigEndian.PutUint16(buff, ResponseTypeFilenames)
 	var filenamesFieldLen uint32 = 0
-	for _, filename := range filenames {
-		filenamesFieldLen += uint32(len(filename))
+	for _, file := range files {
+		filenamesFieldLen += uint32(len(file.Name()))
 		filenamesFieldLen += 1
 	}
 	binary.BigEndian.PutUint32(buff[2:], filenamesFieldLen)
@@ -126,8 +127,8 @@ func WriteFilenamesResponse(writer io.Writer, filenames [][]byte) error {
 	if _, err := buffWriter.Write(buff); err != nil {
 		return err
 	}
-	for _, filename := range filenames {
-		if _, err := buffWriter.Write(filename); err != nil {
+	for _, file := range files {
+		if _, err := buffWriter.WriteString(file.Name()); err != nil {
 			return err
 		}
 		if err := buffWriter.WriteByte(FilenamesDelimiter); err != nil {
