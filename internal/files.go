@@ -9,6 +9,11 @@ const (
 	ReceivedFilesDir = "tmp"
 )
 
+type FileInfo struct {
+	Name []byte
+	Size uint64
+}
+
 func CreateReceivedFilesDir() error {
 	if _, err := os.Stat(ReceivedFilesDir); os.IsNotExist(err) {
 		return os.Mkdir(ReceivedFilesDir, os.ModeDir)
@@ -30,15 +35,15 @@ func OpenFile(filename string, offset int64, flag int) (*os.File, error) {
 	return file, nil
 }
 
-func IndexFiles(dir string) ([]os.FileInfo, error) {
+func IndexFiles(dir string) ([]FileInfo, error) {
 	allFiles, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
-	regFiles := make([]os.FileInfo, 0, len(allFiles))
+	regFiles := make([]FileInfo, 0, len(allFiles))
 	for _, file := range allFiles {
 		if file.Mode().IsRegular() {
-			regFiles = append(regFiles, file)
+			regFiles = append(regFiles, FileInfo{[]byte(file.Name()), uint64(file.Size())})
 		}
 	}
 	return regFiles, nil
