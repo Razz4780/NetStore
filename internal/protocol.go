@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"os"
 )
 
 const (
@@ -61,6 +60,13 @@ func ReadChunkRequest(reader io.Reader) (ChunkRequest, error) {
 	return ChunkRequest{offset, size, filename}, nil
 }
 
+func WriteFilenamesRequest(writer io.Writer) error {
+	buff := make([]byte, 2)
+	binary.BigEndian.PutUint16(buff, RequestTypeFilenames)
+	_, err := writer.Write(buff)
+	return err
+}
+
 func WriteChunkRequest(writer io.Writer, offset, size uint32, filename []byte) error {
 	buff := make([]byte, 12)
 	binary.BigEndian.PutUint16(buff, RequestTypeChunk)
@@ -114,12 +120,12 @@ func ReadFilenamesResponse(reader io.Reader) (FilenamesResponse, error) {
 	return FilenamesResponse{filenames}, nil
 }
 
-func WriteFilenamesResponse(writer io.Writer, files []os.FileInfo) error {
+func WriteFilenamesResponse(writer io.Writer, filenames [][]byte) error {
 	buff := make([]byte, 6)
 	binary.BigEndian.PutUint16(buff, ResponseTypeFilenames)
 	var filenamesFieldLen uint32 = 0
-	for _, file := range files {
-		filenamesFieldLen += uint32(len(file.Name()))
+	for _, file := range filenames {
+		filenamesFieldLen += uint32(len(file))
 		filenamesFieldLen += 1
 	}
 	binary.BigEndian.PutUint32(buff[2:], filenamesFieldLen)
@@ -127,8 +133,8 @@ func WriteFilenamesResponse(writer io.Writer, files []os.FileInfo) error {
 	if _, err := buffWriter.Write(buff); err != nil {
 		return err
 	}
-	for _, file := range files {
-		if _, err := buffWriter.WriteString(file.Name()); err != nil {
+	for _, file := range filenames {
+		if _, err := buffWriter.Write(file); err != nil {
 			return err
 		}
 		if err := buffWriter.WriteByte(FilenamesDelimiter); err != nil {
@@ -175,4 +181,12 @@ func WriteChunkResponse(writer io.Writer, reader io.Reader, chunkSize uint32) er
 		return err
 	}
 	return buffWriter.Flush()
+}
+
+func WriteRefusal(writer io.Writer, cause uint32) error {
+	buff := make([]byte, 6)
+	binary.BigEndian.PutUint16(buff, ResponseTypeRefusal)
+	binary.BigEndian.PutUint32(buff[2:], cause)
+	_, err := writer.Write(buff)
+	return err
 }

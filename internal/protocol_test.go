@@ -49,12 +49,8 @@ func TestReadUint16ReadsExactlyTwoBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal("unexpected error:", err)
 	}
-	nextByte, err := reader.ReadByte()
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-	if nextByte != buff[2] {
-		t.Fatal("read", nextByte, ", expected", buff[2])
+	if reader.Len() != 1 {
+		t.Fatal(reader.Len(), "bytes consumed")
 	}
 }
 
@@ -98,12 +94,8 @@ func TestReadRequestTypeReadsExactlyTwoBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal("unexpected error:", err)
 	}
-	nextByte, err := reader.ReadByte()
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-	if nextByte != buff[2] {
-		t.Fatal("read", nextByte, ", expected", buff[2])
+	if reader.Len() != 1 {
+		t.Fatal(reader.Len(), "bytes consumed")
 	}
 }
 
@@ -165,61 +157,14 @@ func TestReadChunkRequestReadsOnlyRequest(t *testing.T) {
 	buff := make([]byte, 10)
 	binary.BigEndian.PutUint16(buff[8:], uint16(len("filename")))
 	buff = append(buff, "filename"...)
-	buff = append(buff, ^byte(0))
+	buff = append(buff, 0)
 	reader := bytes.NewReader(buff)
 	_, err := ReadChunkRequest(reader)
 	if err != nil {
 		t.Fatal("unexpected error:", err)
 	}
-	nextByte, err := reader.ReadByte()
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-	if nextByte != buff[len(buff)-1] {
-		t.Fatal("read", nextByte, ", expected", buff[len(buff)-1])
-	}
-}
-
-func TestWriteChunkRequest(t *testing.T) {
-	dataSets := []struct {
-		offset   uint32
-		size     uint32
-		filename string
-	}{
-		{0, 0, "asdf"},
-		{1, 2, "random filename"},
-		{4, 12, "name"},
-	}
-	for i, dataSet := range dataSets {
-		t.Run(fmt.Sprint("dataset ", i), func(t *testing.T) {
-			buff := make([]byte, 0)
-			writer := bytes.NewBuffer(buff)
-			err := WriteChunkRequest(writer, dataSet.offset, dataSet.size, []byte(dataSet.filename))
-			if err != nil {
-				t.Fatal("unexpected error:", err)
-			}
-			buff = writer.Bytes()
-			requestType := binary.BigEndian.Uint16(buff)
-			offset := binary.BigEndian.Uint32(buff[2:])
-			size := binary.BigEndian.Uint32(buff[6:])
-			filenameLen := binary.BigEndian.Uint16(buff[10:])
-			filename := string(buff[12:])
-			if requestType != RequestTypeChunk {
-				t.Error("read request type", requestType, ", expected", RequestTypeChunk)
-			}
-			if offset != dataSet.offset {
-				t.Error("read offset", offset, ", expected", dataSet.offset)
-			}
-			if size != dataSet.size {
-				t.Error("read size", size, ", expected", dataSet.size)
-			}
-			if filenameLen != uint16(len(dataSet.filename)) {
-				t.Error("read filename length", filenameLen, ", expected", len(dataSet.filename))
-			}
-			if filename != dataSet.filename {
-				t.Error("read filename", filename, ", expected", dataSet.filename)
-			}
-		})
+	if reader.Len() != 1 {
+		t.Fatal(reader.Len(), "bytes consumed")
 	}
 }
 
@@ -253,20 +198,15 @@ func TestReadResponseTypeOfInvalidValues(t *testing.T) {
 }
 
 func TestReadResponseTypeReadsExactlyTwoBytes(t *testing.T) {
-	buff := make([]byte, 2)
+	buff := make([]byte, 3)
 	binary.BigEndian.PutUint16(buff, ResponseTypeFilenames)
-	buff = append(buff, ^byte(0))
 	reader := bytes.NewReader(buff)
 	_, err := ReadResponseType(reader)
 	if err != nil {
 		t.Fatal("unexpected error:", err)
 	}
-	nextByte, err := reader.ReadByte()
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-	if nextByte != buff[2] {
-		t.Fatal("read", nextByte, ", expected", buff[2])
+	if reader.Len() != 1 {
+		t.Fatal(reader.Len(), "bytes consumed")
 	}
 }
 
@@ -334,18 +274,14 @@ func TestReadFilenamesResponseReadsOnlyResponse(t *testing.T) {
 	buff := make([]byte, 4, 4+len(filename)+1+1)
 	binary.BigEndian.PutUint32(buff, uint32(len(filename))+1)
 	buff = append(buff, filename...)
-	buff = append(buff, FilenamesDelimiter, ^byte(0))
+	buff = append(buff, FilenamesDelimiter, 0)
 	reader := bytes.NewBuffer(buff)
 	_, err := ReadFilenamesResponse(reader)
 	if err != nil {
 		t.Fatal("unexpected error:", err)
 	}
-	nextByte, err := reader.ReadByte()
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-	if nextByte != buff[len(buff)-1] {
-		t.Fatal("read", nextByte, ", expected", buff[len(buff)-1])
+	if reader.Len() != 1 {
+		t.Fatal(reader.Len(), "bytes consumed")
 	}
 }
 
@@ -383,17 +319,235 @@ func TestReadRefusalOfInvalidValues(t *testing.T) {
 func TestReadRefusalReadsExactlyFourBytes(t *testing.T) {
 	buff := make([]byte, 5)
 	binary.BigEndian.PutUint32(buff, RefusalCauseBadSize)
-	buff[4] = ^byte(0)
 	reader := bytes.NewReader(buff)
 	_, err := ReadRefusal(reader)
 	if err != nil {
 		t.Fatal("unexpected error:", err)
 	}
-	nextByte, err := reader.ReadByte()
+	if reader.Len() != 1 {
+		t.Fatal(reader.Len(), "bytes consumed")
+	}
+}
+
+func TestReadChunkResponseOfValidResponses(t *testing.T) {
+	dataSets := []string{
+		"example",
+		"asdasdads",
+		"chunk",
+	}
+	for i, chunk := range dataSets {
+		t.Run(fmt.Sprint("dataset ", i), func(t *testing.T) {
+			buff := make([]byte, 4, 4+len(chunk))
+			binary.BigEndian.PutUint32(buff, uint32(len(chunk)))
+			buff = append(buff, chunk...)
+			writer := bytes.NewBuffer(make([]byte, 0, len(chunk)))
+			result, err := ReadChunkResponse(bytes.NewReader(buff), writer)
+			if err != nil {
+				t.Fatal("unexpected error:", err)
+			}
+			if result != uint32(len(chunk)) {
+				t.Error(result, "bytes received, expected", len(chunk))
+			}
+			received := string(writer.Bytes())
+			if received != chunk {
+				t.Error("received", received, ", expected", chunk)
+			}
+		})
+	}
+}
+
+func TestReadChunkResponseOfInvalidResponses(t *testing.T) {
+	dataSets := []string{
+		"example",
+		"asdasdads",
+		"chunk",
+	}
+	for i, chunk := range dataSets {
+		t.Run(fmt.Sprint("dataset ", i), func(t *testing.T) {
+			buff := make([]byte, 4, 4+len(chunk))
+			binary.BigEndian.PutUint32(buff, uint32(len(chunk)))
+			buff = append(buff, chunk...)
+			writer := bytes.NewBuffer(make([]byte, 0, len(chunk)))
+			_, err := ReadChunkResponse(bytes.NewReader(buff[:len(buff)-1]), writer)
+			if err == nil {
+				t.Fatal("expected error not returned")
+			}
+		})
+	}
+}
+
+func TestWriteFilenamesRequest(t *testing.T) {
+	buffer := bytes.NewBuffer(make([]byte, 0, 2))
+	err := WriteFilenamesRequest(buffer)
 	if err != nil {
 		t.Fatal("unexpected error:", err)
 	}
-	if nextByte != buff[4] {
-		t.Fatal("read", nextByte, ", expected", buff[4])
+	requestType, err := ReadRequestType(buffer)
+	if err != nil {
+		t.Fatal("unexpected error:", err)
+	}
+	if requestType != RequestTypeFilenames {
+		t.Fatal("read", requestType, ", expected", RequestTypeFilenames)
+	}
+}
+
+func TestWriteChunkRequest(t *testing.T) {
+	dataSets := []struct {
+		offset   uint32
+		size     uint32
+		filename string
+	}{
+		{0, 0, "asd"},
+		{1, 2, "example"},
+		{^uint32(0), ^uint32(0), "big_vals"},
+		{2, 2, "  whitespaces  "},
+	}
+	for i, dataSet := range dataSets {
+		t.Run(fmt.Sprint("dataset ", i), func(t *testing.T) {
+			buffer := bytes.NewBuffer(make([]byte, 0, 12+len(dataSet.filename)))
+			err := WriteChunkRequest(buffer, dataSet.offset, dataSet.size, []byte(dataSet.filename))
+			if err != nil {
+				t.Fatal("unexpected error:", err)
+			}
+			requestType, err := ReadRequestType(buffer)
+			if err != nil {
+				t.Fatal("unexpected error:", err)
+			}
+			if requestType != RequestTypeChunk {
+				t.Error("read request type", requestType, ", expected", RequestTypeChunk)
+			}
+			request, err := ReadChunkRequest(buffer)
+			if err != nil {
+				t.Fatal("unexpected error:", err)
+			}
+			if request.Offset != dataSet.offset {
+				t.Error("read offset", request.Offset, ", expected", dataSet.offset)
+			}
+			if request.Size != dataSet.size {
+				t.Error("read size", request.Size, ", expected", dataSet.size)
+			}
+			if string(request.Filename) != dataSet.filename {
+				t.Error("read filename", string(request.Filename), ", expected", dataSet.filename)
+			}
+		})
+	}
+}
+
+func TestWriteFilenamesResponse(t *testing.T) {
+	dataSets := [][]string{
+		{},
+		{"filename"},
+		{"more", "than", "one"},
+	}
+	for i, dataSet := range dataSets {
+		t.Run(fmt.Sprint("dataset ", i), func(t *testing.T) {
+			filenames := make([][]byte, 0, len(dataSet))
+			length := 0
+			for _, name := range dataSet {
+				filenames = append(filenames, []byte(name))
+				length += len(name)
+			}
+			buffer := bytes.NewBuffer(make([]byte, 0, 6+length+len(dataSet)))
+			err := WriteFilenamesResponse(buffer, filenames)
+			if err != nil {
+				t.Fatal("unexpected error:", err)
+			}
+			responseType, err := ReadResponseType(buffer)
+			if err != nil {
+				t.Fatal("unexpected error:", err)
+			}
+			if responseType != ResponseTypeFilenames {
+				t.Error("read response type", responseType, ", expected", ResponseTypeFilenames)
+			}
+			response, err := ReadFilenamesResponse(buffer)
+			if err != nil {
+				t.Fatal("unexpected error:", err)
+			}
+			if len(response.Filenames) != len(dataSet) {
+				t.Fatal("read", len(response.Filenames), "filenames, expected", len(dataSet))
+			}
+			for i := 0; i < len(dataSet); i++ {
+				if string(response.Filenames[i]) != dataSet[i] {
+					t.Error("filenames don't match:", response.Filenames[i], dataSet[i])
+				}
+			}
+		})
+	}
+}
+
+func TestWriteRefusal(t *testing.T) {
+	causes := []uint32{RefusalCauseBadFilename, RefusalCauseBadOffset, RefusalCauseBadSize}
+	for _, cause := range causes {
+		t.Run(fmt.Sprint("writing cause ", cause), func(t *testing.T) {
+			buffer := bytes.NewBuffer(make([]byte, 0, 6))
+			err := WriteRefusal(buffer, cause)
+			if err != nil {
+				t.Fatal("unexpected error:", err)
+			}
+			responseType, err := ReadResponseType(buffer)
+			if err != nil {
+				t.Fatal("unexpected error:", err)
+			}
+			if responseType != ResponseTypeRefusal {
+				t.Error("read response type", responseType, ", expected", ResponseTypeRefusal)
+			}
+			refusalCause, err := ReadRefusal(buffer)
+			if err != nil {
+				t.Fatal("unexpected error:", err)
+			}
+			if refusalCause != cause {
+				t.Error("read refusal cause", refusalCause, ", expected", cause)
+			}
+		})
+	}
+}
+
+func TestWriteChunkResponseFull(t *testing.T) {
+	dataSets := []string{
+		"chunk",
+		"   whitespaces   ",
+		"a",
+	}
+	for i, chunk := range dataSets {
+		t.Run(fmt.Sprint("dataset ", i), func(t *testing.T) {
+			reader := bytes.NewBuffer([]byte(chunk))
+			writer := bytes.NewBuffer(make([]byte, 0, len(chunk)))
+			err := WriteChunkResponse(writer, reader, uint32(len(chunk)))
+			if err != nil {
+				t.Fatal("unexpected error:", err)
+			}
+			received, err := ReadChunkResponse(writer, reader)
+			if err != nil {
+				t.Fatal("unexpected error:", err)
+			}
+			if received != uint32(len(chunk)) {
+				t.Error("received", received, "bytes, expected", len(chunk))
+			}
+			receivedChunk := string(reader.Bytes())
+			if receivedChunk != chunk {
+				t.Fatal("received", receivedChunk, ", expected", chunk)
+			}
+		})
+	}
+}
+
+func TestWriteChunkResponsePartial(t *testing.T) {
+	chunk := "file chunk"
+	reader := bytes.NewReader([]byte(chunk))
+	writer := bytes.NewBuffer(make([]byte, 0, len(chunk)))
+	err := WriteChunkResponse(writer, reader, uint32(len(chunk))-1)
+	if err != nil {
+		t.Fatal("unexpected error:", err)
+	}
+	clientWriter := bytes.NewBuffer(make([]byte, 0, len(chunk)))
+	copied, err := ReadChunkResponse(writer, clientWriter)
+	if err != nil {
+		t.Fatal("unexpected error:", err)
+	}
+	if copied != uint32(len(chunk))-1 {
+		t.Error("received", copied, "bytes, expected", len(chunk)-1)
+	}
+	if string(clientWriter.Bytes()) != chunk[:len(chunk)-1] {
+		t.Error("received", string(clientWriter.Bytes()), ", expected", chunk[:len(chunk)-1])
 	}
 }
