@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	ReceivedFilesDir = "tmp"
+	ReceivedFilesDir = "./tmp"
 )
 
 type FileInfo struct {
@@ -29,6 +29,7 @@ func OpenFile(filename string, offset int64, flag int) (*os.File, error) {
 	}
 	if offset != 0 {
 		if _, err := file.Seek(offset, 0); err != nil {
+			_ = file.Close()
 			return nil, err
 		}
 	}
