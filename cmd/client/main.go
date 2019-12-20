@@ -90,6 +90,10 @@ func main() {
 	if err != nil {
 		log.Fatal("Could not get filenames: ", err)
 	}
+	if len(filenames) == 0 {
+		fmt.Println("No files available.")
+		return
+	}
 	fmt.Println("Available files:")
 	for i, filename := range filenames {
 		fmt.Println(i, string(filename))
